@@ -1,0 +1,8 @@
+node_modules/
+.env
+.trigger/
+.tmp/
+credentials.json
+token.json
+*.iam.json
+single-bulwark-*.json
