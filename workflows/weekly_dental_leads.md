@@ -28,7 +28,8 @@ Every Monday, find dental practices with **no website** in the target cities, so
 Google Sheet tab `Leads` (created automatically on first run):
 Date Found | Practice Name | City | Address | Phone | Rating | Reviews | Category | Google Maps | Place ID | Status
 
-- Dedupe key is the Google Place ID (column J). Don't delete or reorder that column.
+- A lead counts as a duplicate if its **Google Place ID (column J) or phone number (column E)** is already in the sheet, or appears earlier in the same run. Don't delete or reorder those columns.
+- Why phone too: Google often lists one practice twice, e.g. a French and an Arabic name or an old and a new name, with different Place IDs but the same phone. Place ID alone let 15 such pairs through on the first run (2026-10-30). Phones are compared as digits only, with `+213` turned into a leading `0`. Leads with no phone fall back to Place ID only.
 - `Status` starts as `New`. Edit it freely (Contacted, Won, etc.); the automation never overwrites existing rows.
 
 ## ClickUp (pipeline)

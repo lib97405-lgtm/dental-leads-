@@ -15,7 +15,10 @@ const HEADERS = [
   "Place ID",
   "Status",
 ];
+const PHONE_COLUMN = "E";
 const PLACE_ID_COLUMN = "J";
+// Place ID's index within a row read from PHONE_COLUMN..PLACE_ID_COLUMN (E=0 ... J=5)
+const PLACE_ID_OFFSET = 5;
 
 function sheetsClient() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -55,7 +58,17 @@ async function ensureTab(sheets: ReturnType<typeof sheetsClient>, spreadsheetId:
   });
 }
 
-// Returns the leads not already in the sheet (deduped by Google place ID).
+// Digits only, with Algeria's +213 prefix turned into the local leading 0, so "+213 552 17 25 94"
+// and "0552 17 25 94" compare equal. Empty when there's no usable number.
+function normalizePhone(phone: string): string {
+  let digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("213")) digits = "0" + digits.slice(3);
+  return digits.length >= 8 ? digits : "";
+}
+
+// Returns the leads not already in the sheet. A lead is a duplicate if its Google place ID or its
+// phone number was seen before: Google often lists one practice twice (e.g. French + Arabic name),
+// with different place IDs but the same phone.
 export async function filterNewLeads(leads: Lead[]): Promise<Lead[]> {
   const sheets = sheetsClient();
   const spreadsheetId = sheetId();
@@ -63,10 +76,26 @@ export async function filterNewLeads(leads: Lead[]): Promise<Lead[]> {
 
   const existing = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${TAB}!${PLACE_ID_COLUMN}2:${PLACE_ID_COLUMN}`,
+    range: `${TAB}!${PHONE_COLUMN}2:${PLACE_ID_COLUMN}`,
   });
-  const seen = new Set((existing.data.values ?? []).map((row) => String(row[0])));
-  return leads.filter((l) => !seen.has(l.placeId));
+  const seenIds = new Set<string>();
+  const seenPhones = new Set<string>();
+  for (const row of existing.data.values ?? []) {
+    const phone = normalizePhone(String(row[0] ?? ""));
+    if (phone) seenPhones.add(phone);
+    if (row[PLACE_ID_OFFSET]) seenIds.add(String(row[PLACE_ID_OFFSET]));
+  }
+
+  // Also dedupes within this batch, since a run can return both listings of the same practice
+  const fresh: Lead[] = [];
+  for (const lead of leads) {
+    const phone = normalizePhone(lead.phone);
+    if (seenIds.has(lead.placeId) || (phone && seenPhones.has(phone))) continue;
+    seenIds.add(lead.placeId);
+    if (phone) seenPhones.add(phone);
+    fresh.push(lead);
+  }
+  return fresh;
 }
 
 // Appends leads to the sheet as-is. Call filterNewLeads first to avoid duplicates.
